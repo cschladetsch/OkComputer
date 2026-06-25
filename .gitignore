@@ -1,0 +1,10 @@
+build/
+logs/*
+!logs/.gitkeep
+webapp/node_modules/
+webapp/dist/
+.mypy_cache/
+.pytest_cache/
+.venv/
+__pycache__/
+*.pyc

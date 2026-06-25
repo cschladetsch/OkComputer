@@ -1,0 +1,14 @@
+[Unit]
+Description=OkComputer Voice Assistant
+After=network.target sound.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/okcomputer-launch.sh
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/var/log/okcomputer.log
+StandardError=append:/var/log/okcomputer.log
+
+[Install]
+WantedBy=default.target

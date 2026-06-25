@@ -1,0 +1,95 @@
+{
+  "$schema": "./okcomputer.config.schema.json",
+  "version": "1",
+  "wake_word": "ok computer",
+  "wake_word_sensitivity": 0.5,
+  "confirm_before_execute": true,
+  "confirmation_phrase": "doing that now",
+  "privacy_mode_phrase": "stop listening",
+  "resume_phrase": "start listening",
+  "conversation": {
+    "context_turns": 6,
+    "max_history": 16,
+    "keep_recent": 8,
+    "max_memory_chars": 1500,
+    "reset_after_silence_seconds": 120
+  },
+  "stt": {
+    "wake_backend": "vosk",
+    "vosk_model_name": "vosk-model-small-en-us-0.15",
+    "transcribe_backend": "faster-whisper",
+    "whisper_model_name": "faster-whisper-small-en",
+    "language": "en",
+    "silence_seconds": 3.0
+  },
+  "tts": {
+    "backend": "kokoro",
+    "kokoro_model_name": "kokoro-v0_19",
+    "voice": "af_nicole",
+    "speed": 0.85,
+    "chunk_chars": 600,
+    "fallback_backend": "espeak",
+    "espeak_voice": "en-us",
+    "espeak_speed": 160
+  },
+  "llm": {
+    "primary_endpoint": "http://localhost:5001/v1",
+    "primary_model": "qwen2.5-coder:7b",
+    "fallback_endpoint": "http://localhost:5002/v1",
+    "fallback_model": "llama3.2:3b",
+    "system_prompt": "You are a concise voice assistant. Reply in one or two plain sentences. No markdown.",
+    "timeout_seconds": 8,
+    "max_tokens": 150,
+    "temperature": 0.4
+  },
+  "audio": {
+    "input_device": "default",
+    "output_device": "default",
+    "sample_rate": 16000,
+    "channels": 1,
+    "chunk_ms": 30
+  },
+  "model_store": {
+    "home_override": "",
+    "auto_ensure_on_missing": true,
+    "models": [
+      {
+        "name": "vosk-model-small-en-us-0.15",
+        "source": "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip",
+        "type": "vosk"
+      },
+      {
+        "name": "faster-whisper-small-en",
+        "source": "Systran/faster-whisper-small.en",
+        "type": "huggingface"
+      },
+      {
+        "name": "kokoro-v0_19",
+        "source": "https://huggingface.co/hexgrad/Kokoro-82M/resolve/main/kokoro-v0_19.onnx",
+        "type": "onnx",
+        "aux": [
+          "https://huggingface.co/hexgrad/Kokoro-82M/resolve/main/voices/af_nicole.pt",
+          "https://huggingface.co/hexgrad/Kokoro-82M/resolve/main/voices/af_bella.pt",
+          "https://huggingface.co/hexgrad/Kokoro-82M/resolve/main/voices/am_adam.pt",
+          "https://huggingface.co/hexgrad/Kokoro-82M/resolve/main/voices/bm_george.pt"
+        ]
+      }
+    ]
+  },
+  "ipc": {
+    "pipe_name": "okcomputer",
+    "ws_port": 5003
+  },
+  "webapp": {
+    "port": 5173,
+    "open_on_start": true
+  },
+  "service": {
+    "auto_start": true,
+    "log_path": "logs/okcomputer.log",
+    "log_level": "info",
+    "restart_on_crash": true,
+    "crash_cooldown_seconds": 5,
+    "max_restarts": 3
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["version", "wake_word", "stt", "tts", "llm", "audio", "model_store", "ipc", "webapp", "service"],
+  "properties": {
+    "version": { "const": "1" },
+    "wake_word": { "type": "string", "minLength": 1 },
+    "wake_word_sensitivity": { "type": "number", "minimum": 0, "maximum": 1 },
+    "confirm_before_execute": { "type": "boolean" },
+    "confirmation_phrase": { "type": "string" },
+    "privacy_mode_phrase": { "type": "string" },
+    "resume_phrase": { "type": "string" },
+    "conversation": {
+      "type": "object",
+      "required": ["context_turns", "max_history", "keep_recent", "max_memory_chars", "reset_after_silence_seconds"]
+    },
+    "stt": {
+      "type": "object",
+      "required": ["wake_backend", "vosk_model_name", "transcribe_backend", "whisper_model_name", "language", "silence_seconds"]
+    },
+    "tts": {
+      "type": "object",
+      "required": ["backend", "kokoro_model_name", "voice", "speed", "chunk_chars", "fallback_backend", "espeak_voice", "espeak_speed"]
+    },
+    "llm": {
+      "type": "object",
+      "required": ["primary_endpoint", "primary_model", "fallback_endpoint", "fallback_model", "system_prompt", "timeout_seconds", "max_tokens", "temperature"]
+    },
+    "audio": {
+      "type": "object",
+      "required": ["input_device", "output_device", "sample_rate", "channels", "chunk_ms"],
+      "properties": {
+        "sample_rate": { "type": "integer", "minimum": 8000 },
+        "channels": { "type": "integer", "minimum": 1 },
+        "chunk_ms": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "model_store": {
+      "type": "object",
+      "required": ["home_override", "auto_ensure_on_missing", "models"]
+    },
+    "ipc": {
+      "type": "object",
+      "required": ["pipe_name", "ws_port"]
+    },
+    "webapp": {
+      "type": "object",
+      "required": ["port", "open_on_start"]
+    },
+    "service": {
+      "type": "object",
+      "required": ["auto_start", "log_path", "log_level", "restart_on_crash", "crash_cooldown_seconds", "max_restarts"]
+    }
+  }
+}
