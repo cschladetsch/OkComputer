@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 
-import bridge.main as bridge_main
 from bridge.controller import BridgeController
 from bridge.errors import LLMError, STTInitError, STTProcessingError, SystemHandlerError
 from bridge.ipc.client import IPCClient
@@ -17,6 +16,7 @@ from bridge.system.handler import SystemHandler
 from bridge.text import strip_markdown
 from bridge.tts.kokoro_backend import KokoroBackend
 from bridge.ws_relay import WSRelay
+import bridge.runtime as bridge_runtime
 
 
 def test_markdown_stripped() -> None:
@@ -134,14 +134,14 @@ def test_bridge_main_broadcasts_initial_state(monkeypatch: pytest.MonkeyPatch) -
         def attach_client(self, handler: object) -> None:
             return None
 
-    monkeypatch.setattr(bridge_main, "load_config", lambda: {"ipc": {"ws_port": 5003}, "tts": {"chunk_chars": 600, "speed": 0.85}})
-    monkeypatch.setattr(bridge_main, "IPCClient", FakeIPCClient)
-    monkeypatch.setattr(bridge_main, "WSRelay", FakeRelay)
-    monkeypatch.setattr(bridge_main, "KokoroBackend", lambda chunk_chars, speed: object())
-    monkeypatch.setattr(bridge_main, "SystemHandler", lambda: object())
+    monkeypatch.setattr(bridge_runtime, "load_config", lambda: {"ipc": {"ws_port": 5003}, "tts": {"chunk_chars": 600, "speed": 0.85}})
+    monkeypatch.setattr(bridge_runtime, "IPCClient", FakeIPCClient)
+    monkeypatch.setattr(bridge_runtime, "WSRelay", FakeRelay)
+    monkeypatch.setattr(bridge_runtime, "KokoroBackend", lambda chunk_chars, speed: object())
+    monkeypatch.setattr(bridge_runtime, "SystemHandler", lambda: object())
 
     async def run() -> None:
-        await bridge_main.main()
+        await bridge_runtime.initialize_bridge()
 
     asyncio.run(run())
 

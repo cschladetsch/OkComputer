@@ -16,3 +16,4 @@
 - 2026-06-26: Add a lightweight in-process IPC/relay event bus so bridge startup can broadcast state frames without requiring an external websocket backend in tests.
 - 2026-06-26: Pin bridge startup with a unit test that asserts the initial `IDLE` broadcast so runtime wiring stays observable.
 - 2026-06-26: Route webapp command frames through a dedicated bridge controller so `STOP`, config save, and config reload logic stay isolated from the startup shim.
+- 2026-06-26: Keep `r.py` as a thin wrapper and move orchestration into `bridge.runtime` so the entry point stays simple while runtime logic remains importable and testable.
