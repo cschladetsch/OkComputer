@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+import bridge.main as bridge_main
 from bridge.errors import LLMError, STTInitError, STTProcessingError, SystemHandlerError
 from bridge.ipc.client import IPCClient
 from bridge.llm.router import LLMRouter
@@ -13,6 +14,7 @@ from bridge.stt.vosk_backend import VoskBackend
 from bridge.system.handler import SystemHandler
 from bridge.text import strip_markdown
 from bridge.tts.kokoro_backend import KokoroBackend
+from bridge.ws_relay import WSRelay
 
 
 def test_markdown_stripped() -> None:
@@ -75,7 +77,68 @@ def test_ipc_echo_queue() -> None:
     asyncio.run(run())
 
 
+def test_ws_relay_broadcast_and_ipc_subscription() -> None:
+    async def run() -> None:
+        relay = WSRelay(5003)
+        await relay.start()
+        client = IPCClient()
+        await client.connect()
+        client.subscribe(relay.broadcast)
+        await client.send({"type": "state", "state": "LISTENING"})
+        assert relay.events[-1] == {"type": "state", "state": "LISTENING"}
+
+        received: list[dict[str, object]] = []
+
+        async def capture(frame: dict[str, object]) -> None:
+            received.append(frame)
+
+        relay.attach_client(capture)
+        await relay.broadcast({"type": "transcript", "speaker": "USER", "text": "hello"})
+        assert received[-1]["type"] == "transcript"
+
+    asyncio.run(run())
+
+
 def test_system_handler_unknown_action() -> None:
     handler = SystemHandler()
     with pytest.raises(SystemHandlerError):
         handler.execute(ActionEnum.STOP, {})
+
+
+def test_bridge_main_broadcasts_initial_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeIPCClient:
+        def __init__(self) -> None:
+            self.connected = False
+            self.handlers: list[object] = []
+
+        async def connect(self) -> None:
+            self.connected = True
+
+        def subscribe(self, handler: object) -> None:
+            self.handlers.append(handler)
+
+    class FakeRelay:
+        def __init__(self, port: int) -> None:
+            self.port = port
+            self.session_token = "session-token"
+            self.events: list[dict[str, object]] = []
+
+        async def start(self) -> None:
+            return None
+
+        async def broadcast(self, frame: dict[str, object]) -> None:
+            self.events.append(frame)
+
+        def attach_client(self, handler: object) -> None:
+            return None
+
+    monkeypatch.setattr(bridge_main, "load_config", lambda: {"ipc": {"ws_port": 5003}, "tts": {"chunk_chars": 600, "speed": 0.85}})
+    monkeypatch.setattr(bridge_main, "IPCClient", FakeIPCClient)
+    monkeypatch.setattr(bridge_main, "WSRelay", FakeRelay)
+    monkeypatch.setattr(bridge_main, "KokoroBackend", lambda chunk_chars, speed: object())
+    monkeypatch.setattr(bridge_main, "SystemHandler", lambda: object())
+
+    async def run() -> None:
+        await bridge_main.main()
+
+    asyncio.run(run())

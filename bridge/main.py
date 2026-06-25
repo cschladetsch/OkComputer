@@ -17,7 +17,10 @@ async def main() -> None:
     await relay.start()
     _tts = KokoroBackend(int(config["tts"]["chunk_chars"]), float(config["tts"]["speed"]))
     _system = SystemHandler()
+    ipc.subscribe(relay.broadcast)
+    await relay.broadcast({"type": "state", "state": "IDLE"})
     print(f"Bridge ready. Session token: {relay.session_token}")
+    await asyncio.sleep(0)
 
 
 if __name__ == "__main__":

@@ -13,3 +13,5 @@
 - 2026-06-26: Resolve Python 3.11+ from known install locations in `setup.ps1` because the WindowsApps `python` shim can remain broken after installation.
 - 2026-06-26: Keep C++ config parsing dependency-free for this scaffold while adding nested-key extraction and cache fallback so the local build remains network-independent.
 - 2026-06-26: Expose LLM mock endpoint attempts in tests so retry and failover contracts are verifiable without a real local model server.
+- 2026-06-26: Add a lightweight in-process IPC/relay event bus so bridge startup can broadcast state frames without requiring an external websocket backend in tests.
+- 2026-06-26: Pin bridge startup with a unit test that asserts the initial `IDLE` broadcast so runtime wiring stays observable.
