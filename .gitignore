@@ -1,3 +1,4 @@
+/.grok
 build/
 logs/*
 !logs/.gitkeep
