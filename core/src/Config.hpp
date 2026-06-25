@@ -4,6 +4,7 @@
 
 #include <filesystem>
 #include <map>
+#include <optional>
 
 namespace okcomputer {
 
@@ -20,9 +21,12 @@ public:
 private:
   std::expected<std::string, OkError> ReadWithRetry() const;
   static std::map<std::string, std::string> ParseFlatValues(std::string_view json);
+  static void ApplyDefaults(std::map<std::string, std::string>& values);
+  static bool HasBalancedJsonDelimiters(std::string_view json);
 
   std::filesystem::path path_;
   std::map<std::string, std::string> cache_;
+  std::optional<std::filesystem::file_time_type> last_write_time_;
 };
 
 template <>

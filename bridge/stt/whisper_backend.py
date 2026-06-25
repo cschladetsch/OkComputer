@@ -15,4 +15,6 @@ class WhisperBackend:
             raise STTInitError("STT_MODEL_MISSING")
         if not pcm:
             raise STTProcessingError("empty audio")
+        if len(pcm) % 2 != 0:
+            raise STTProcessingError("expected int16 PCM frames")
         return STTResult(text="ok computer volume up", confidence=0.85)

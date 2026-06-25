@@ -11,3 +11,5 @@
 - 2026-06-26: Launch the bridge as `python -m bridge.main` so package imports resolve consistently from run scripts.
 - 2026-06-26: Validate setup tool minimum versions explicitly so broken shims or too-old tools fail with install guidance.
 - 2026-06-26: Resolve Python 3.11+ from known install locations in `setup.ps1` because the WindowsApps `python` shim can remain broken after installation.
+- 2026-06-26: Keep C++ config parsing dependency-free for this scaffold while adding nested-key extraction and cache fallback so the local build remains network-independent.
+- 2026-06-26: Expose LLM mock endpoint attempts in tests so retry and failover contracts are verifiable without a real local model server.

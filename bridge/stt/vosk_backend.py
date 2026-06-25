@@ -27,6 +27,8 @@ class VoskBackend:
     def accept_pcm(self, frame: bytes) -> WakeWordEvent | None:
         if not self._running:
             raise STTProcessingError("VoskBackend is not running")
+        if len(frame) % 2 != 0:
+            raise STTProcessingError("expected int16 PCM frames")
         if len(frame) > 0 and any(byte != 0 for byte in frame):
             return WakeWordEvent(phrase=self._wake_word, confidence=0.9)
         return None

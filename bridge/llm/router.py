@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import deque
+from collections import defaultdict
 from typing import Deque
 
 from bridge.errors import LLMError
@@ -24,11 +25,23 @@ class LLMRouter:
         self.fallback_model = fallback_model
         self.timeout_seconds = timeout_seconds
         self.history: Deque[tuple[str, str]] = deque(maxlen=context_turns)
+        self.endpoint_attempts: dict[str, int] = defaultdict(int)
+        self.last_prompts: list[str] = []
 
     async def complete(self, text: str, memory_summary: str | None = None) -> str:
         prompt = f"{memory_summary}\n{text}" if memory_summary else text
+        self.last_prompts.append(prompt)
         try:
-            response = await asyncio.wait_for(self._post(self.primary_endpoint, self.primary_model, prompt), self.timeout_seconds)
+            try:
+                response = await asyncio.wait_for(
+                    self._post(self.primary_endpoint, self.primary_model, prompt),
+                    self.timeout_seconds,
+                )
+            except Exception:
+                response = await asyncio.wait_for(
+                    self._post(self.primary_endpoint, self.primary_model, prompt),
+                    self.timeout_seconds,
+                )
         except Exception:
             try:
                 response = await asyncio.wait_for(self._post(self.fallback_endpoint, self.fallback_model, prompt), self.timeout_seconds)
@@ -40,7 +53,10 @@ class LLMRouter:
 
     async def _post(self, endpoint: str, model: str, prompt: str) -> str:
         await asyncio.sleep(0)
-        if "fail" in endpoint:
+        self.endpoint_attempts[endpoint] += 1
+        if endpoint.startswith("fail-once://") and self.endpoint_attempts[endpoint] == 1:
+            raise LLMError("endpoint failed once")
+        if endpoint.startswith("fail://"):
             raise LLMError("endpoint failed")
         if "capital of france" in prompt.lower():
             return "The capital of France is **Paris**."

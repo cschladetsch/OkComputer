@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from bridge.errors import LLMError, STTInitError, SystemHandlerError
+from bridge.errors import LLMError, STTInitError, STTProcessingError, SystemHandlerError
 from bridge.ipc.client import IPCClient
 from bridge.llm.router import LLMRouter
 from bridge.models import ActionEnum
@@ -32,6 +32,8 @@ def test_vosk_wake_event(tmp_path: Path) -> None:
     backend.start()
     assert backend.accept_pcm(b"\x01\x00") is not None
     assert backend.accept_pcm(b"\x00\x00") is None
+    with pytest.raises(STTProcessingError):
+        backend.accept_pcm(b"\x01")
 
 
 def test_kokoro_chunks_and_interrupt() -> None:
@@ -49,6 +51,13 @@ def test_llm_failover_and_markdown() -> None:
     async def run() -> None:
         router = LLMRouter("fail://primary", "local://fallback", "primary", "fallback")
         assert await router.complete("what is the capital of france") == "The capital of France is Paris."
+        assert router.endpoint_attempts["fail://primary"] == 2
+        assert router.endpoint_attempts["local://fallback"] == 1
+        flaky = LLMRouter("fail-once://primary", "local://fallback", "primary", "fallback")
+        assert await flaky.complete("hello", memory_summary="memory") == "primary: memory hello"
+        assert flaky.endpoint_attempts["fail-once://primary"] == 2
+        assert flaky.endpoint_attempts["local://fallback"] == 0
+        assert flaky.last_prompts[-1] == "memory\nhello"
         failing = LLMRouter("fail://primary", "fail://fallback", "primary", "fallback")
         with pytest.raises(LLMError):
             await failing.complete("hello")

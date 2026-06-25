@@ -1,5 +1,7 @@
 #include "StateMachine.hpp"
 
+#include <optional>
+
 namespace okcomputer {
 
 std::expected<void, OkError> StateMachine::Transition(State state) {
@@ -11,14 +13,17 @@ std::expected<void, OkError> StateMachine::Transition(State state) {
 }
 
 std::expected<void, OkError> StateMachine::Stop() {
+  std::optional<OkError> first_error;
   for (const auto& handler : stop_handlers_) {
     auto result = handler();
-    if (!result) {
-      state_ = State::Idle;
-      return std::unexpected(result.error());
+    if (!result && !first_error.has_value()) {
+      first_error = result.error();
     }
   }
   state_ = State::Idle;
+  if (first_error.has_value()) {
+    return std::unexpected(*first_error);
+  }
   return {};
 }
 
