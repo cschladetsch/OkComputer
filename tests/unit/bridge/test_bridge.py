@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 
 import pytest
 
 import bridge.main as bridge_main
+from bridge.controller import BridgeController
 from bridge.errors import LLMError, STTInitError, STTProcessingError, SystemHandlerError
 from bridge.ipc.client import IPCClient
 from bridge.llm.router import LLMRouter
@@ -140,5 +142,34 @@ def test_bridge_main_broadcasts_initial_state(monkeypatch: pytest.MonkeyPatch) -
 
     async def run() -> None:
         await bridge_main.main()
+
+    asyncio.run(run())
+
+
+def test_bridge_controller_stop_sequence(tmp_path: Path) -> None:
+    async def run() -> None:
+        relay = WSRelay(5003)
+        await relay.start()
+        controller = BridgeController(tmp_path / "okcomputer.config.json", relay, SystemHandler())
+        await controller.process_frame({"type": "command", "action": "STOP"})
+        assert relay.events == [
+            {"type": "state_change", "requested_state": "IDLE"},
+            {"type": "state_confirm", "state": "IDLE"},
+        ]
+
+    asyncio.run(run())
+
+
+def test_bridge_controller_config_update_and_reload(tmp_path: Path) -> None:
+    async def run() -> None:
+        relay = WSRelay(5003)
+        await relay.start()
+        config_path = tmp_path / "okcomputer.config.json"
+        config_path.write_text('{"version":"1","wake_word":"ok computer"}', encoding="utf-8")
+        controller = BridgeController(config_path, relay, SystemHandler())
+        await controller.process_frame({"type": "config_update", "config": {"version": "1", "wake_word": "updated"}})
+        await controller.process_frame({"type": "reload_config"})
+        assert json.loads(config_path.read_text(encoding="utf-8"))["wake_word"] == "updated"
+        assert relay.events[-1]["type"] == "config"
 
     asyncio.run(run())

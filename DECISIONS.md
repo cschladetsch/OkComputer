@@ -15,3 +15,4 @@
 - 2026-06-26: Expose LLM mock endpoint attempts in tests so retry and failover contracts are verifiable without a real local model server.
 - 2026-06-26: Add a lightweight in-process IPC/relay event bus so bridge startup can broadcast state frames without requiring an external websocket backend in tests.
 - 2026-06-26: Pin bridge startup with a unit test that asserts the initial `IDLE` broadcast so runtime wiring stays observable.
+- 2026-06-26: Route webapp command frames through a dedicated bridge controller so `STOP`, config save, and config reload logic stay isolated from the startup shim.
