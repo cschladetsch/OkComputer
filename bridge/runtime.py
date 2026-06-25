@@ -4,6 +4,7 @@ import asyncio
 import json
 import signal
 import sys
+import subprocess
 import webbrowser
 from collections.abc import Sequence
 from pathlib import Path
@@ -20,6 +21,7 @@ ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = ROOT / "okcomputer.config.json"
 BRIDGE_LOG = ROOT / "logs" / "bridge.log"
 CORE_LOG = ROOT / "logs" / "core.log"
+WEBAPP_LOG = ROOT / "logs" / "webapp.log"
 
 
 def load_runtime_config() -> dict[str, object]:
@@ -54,14 +56,24 @@ async def spawn(command: Sequence[str], stdout: TextIO, stderr: TextIO) -> async
     return await asyncio.create_subprocess_exec(*command, stdout=stdout, stderr=stderr, cwd=str(ROOT))
 
 
+def start_webapp(port: int, log: TextIO) -> subprocess.Popen[Any]:
+    webapp_dir = ROOT / "webapp"
+    command = [python_executable(), "-m", "http.server", str(port)]
+    if sys.platform == "win32":
+        creationflags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+        return subprocess.Popen(command, stdout=log, stderr=log, cwd=str(webapp_dir / "dist"), creationflags=creationflags)
+    return subprocess.Popen(command, stdout=log, stderr=log, cwd=str(webapp_dir / "dist"), start_new_session=True)
+
+
 async def run() -> None:
     config = load_runtime_config()
-    webapp = config_section(config, "webapp")
+    webapp_config = config_section(config, "webapp")
     logs_dir = ROOT / "logs"
     logs_dir.mkdir(exist_ok=True)
 
     bridge_log = BRIDGE_LOG.open("w", encoding="utf-8")
     core_log = CORE_LOG.open("w", encoding="utf-8")
+    webapp_log = WEBAPP_LOG.open("w", encoding="utf-8")
     bridge = await spawn([python_executable(), "-m", "bridge.main"], bridge_log, bridge_log)
     core_path = core_executable()
     if not core_path.exists():
@@ -71,11 +83,13 @@ async def run() -> None:
         await bridge.wait()
         bridge_log.close()
         core_log.close()
+        webapp_log.close()
         raise SystemExit(1)
     core = await spawn([str(core_path)], core_log, core_log)
+    webapp_process = start_webapp(int(webapp_config["port"]), webapp_log) if bool(webapp_config.get("open_on_start", False)) else None
 
-    if bool(webapp.get("open_on_start", False)):
-        webbrowser.open(f"http://localhost:{int(webapp['port'])}")
+    if webapp_process is not None:
+        webbrowser.open(f"http://localhost:{int(webapp_config['port'])}")
 
     print("OkComputer running. Say 'Ok Computer' to begin.")
 
@@ -96,7 +110,8 @@ async def run() -> None:
     wait_task = asyncio.create_task(stop_event.wait())
     core_task = asyncio.create_task(core.wait())
     bridge_task = asyncio.create_task(bridge.wait())
-    done, pending = await asyncio.wait({wait_task, core_task, bridge_task}, return_when=asyncio.FIRST_COMPLETED)
+    waiters = {wait_task, core_task, bridge_task}
+    done, pending = await asyncio.wait(waiters, return_when=asyncio.FIRST_COMPLETED)
 
     stop_event.set()
     for task in pending:
@@ -106,10 +121,11 @@ async def run() -> None:
         core.terminate()
     if bridge.returncode is None:
         bridge.terminate()
-
-    await asyncio.gather(core.wait(), bridge.wait(), return_exceptions=True)
+    waits = [core.wait(), bridge.wait()]
+    await asyncio.gather(*waits, return_exceptions=True)
     bridge_log.close()
     core_log.close()
+    webapp_log.close()
 
     if any(task is core_task or task is bridge_task for task in done):
         raise SystemExit(0)

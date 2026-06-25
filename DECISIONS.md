@@ -17,3 +17,4 @@
 - 2026-06-26: Pin bridge startup with a unit test that asserts the initial `IDLE` broadcast so runtime wiring stays observable.
 - 2026-06-26: Route webapp command frames through a dedicated bridge controller so `STOP`, config save, and config reload logic stay isolated from the startup shim.
 - 2026-06-26: Keep `r.py` as a thin wrapper and move orchestration into `bridge.runtime` so the entry point stays simple while runtime logic remains importable and testable.
+- 2026-06-26: Detach the webapp static server from the launcher lifecycle so `http://localhost:5173` stays reachable even after the stub core process exits.
