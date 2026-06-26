@@ -26,6 +26,13 @@ const defaultStatus: LLMStatusSnapshot = {
 
 let socket: WebSocket | null = null;
 
+function appendDeltaText(existing: string, delta: string): string {
+  if (!existing) {
+    return delta;
+  }
+  return `${existing} ${delta}`.replace(/\s+/g, " ").trim();
+}
+
 function send(message: WSMessage): void {
   if (socket?.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify(message));
@@ -55,6 +62,51 @@ export const useOkComputerStore = create<OkComputerStore>((set) => ({
       set({ state: message.state, privacyMode: message.state === "PRIVACY" });
     } else if (message.type === "transcript") {
       set((state) => ({ transcripts: [...state.transcripts, { timestamp: message.timestamp, speaker: message.speaker, text: message.text }] }));
+    } else if (message.type === "transcript_delta") {
+      set((state) => {
+        const existingIndex = state.transcripts.findIndex((entry) => entry.utterance_id === message.utterance_id);
+        if (existingIndex === -1) {
+          return {
+            transcripts: [
+              ...state.transcripts,
+              {
+                utterance_id: message.utterance_id,
+                timestamp: new Date().toISOString(),
+                speaker: message.speaker,
+                text: message.text,
+                source: "tts",
+                status: message.final ? "complete" : "partial"
+              }
+            ]
+          };
+        }
+        const transcripts = [...state.transcripts];
+        const existing = transcripts[existingIndex];
+        transcripts[existingIndex] = {
+          ...existing,
+          text: appendDeltaText(existing.text, message.text),
+          status: message.final ? "complete" : "partial"
+        };
+        return { transcripts };
+      });
+    } else if (message.type === "transcript_entry") {
+      set((state) => {
+        const finalEntry: TranscriptEntry = {
+          utterance_id: message.utterance_id,
+          timestamp: message.timestamp,
+          speaker: message.speaker,
+          text: message.text,
+          source: message.source,
+          status: message.status
+        };
+        const existingIndex = state.transcripts.findIndex((entry) => entry.utterance_id === message.utterance_id);
+        if (existingIndex === -1) {
+          return { transcripts: [...state.transcripts, finalEntry] };
+        }
+        const transcripts = [...state.transcripts];
+        transcripts[existingIndex] = finalEntry;
+        return { transcripts };
+      });
     } else if (message.type === "llm_status") {
       set({ llmStatus: { primary: message.primary, fallback: message.fallback, latencies_ms: message.latencies_ms.slice(-5) } });
     } else if (message.type === "config") {

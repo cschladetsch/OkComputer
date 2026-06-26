@@ -11,7 +11,7 @@ export function TranscriptFeed({ entries }: TranscriptFeedProps): JSX.Element {
   return (
     <div className="transcript" ref={ref}>
       {entries.map((entry) => (
-        <div className={`entry ${entry.speaker.toLowerCase()}`} key={`${entry.timestamp}-${entry.text}`}>
+        <div className={`entry ${entry.speaker.toLowerCase()}`} key={entry.utterance_id ?? `${entry.timestamp}-${entry.text}`}>
           <time>{entry.timestamp}</time>
           <strong>{entry.speaker}</strong>
           <p>{entry.text}</p>

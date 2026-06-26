@@ -20,7 +20,12 @@
     },
     "tts": {
       "type": "object",
-      "required": ["backend", "kokoro_model_name", "voice", "speed", "chunk_chars", "fallback_backend", "espeak_voice", "espeak_speed"]
+      "required": ["backend", "kokoro_model_name", "voice", "speed", "chunk_chars", "live_transcription", "retroactive_transcription", "transcript_retention_turns", "fallback_backend", "espeak_voice", "espeak_speed"],
+      "properties": {
+        "live_transcription": { "type": "boolean" },
+        "retroactive_transcription": { "type": "boolean" },
+        "transcript_retention_turns": { "type": "integer", "minimum": 0 }
+      }
     },
     "llm": {
       "type": "object",

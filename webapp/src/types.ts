@@ -19,9 +19,12 @@ export type ActionEnum =
   | "STOP";
 
 export interface TranscriptEntry {
+  utterance_id?: string;
   timestamp: string;
   speaker: Speaker;
   text: string;
+  source?: "stt" | "tts";
+  status?: "partial" | "complete" | "interrupted";
 }
 
 export interface CommandDefinition {
@@ -55,6 +58,8 @@ export interface OkConfig {
 export type WSMessage =
   | { type: "state"; state: AssistantState }
   | { type: "transcript"; speaker: Speaker; text: string; timestamp: string }
+  | { type: "transcript_delta"; speaker: "ASSISTANT"; utterance_id: string; sequence: number; text: string; final: boolean }
+  | { type: "transcript_entry"; speaker: "ASSISTANT"; utterance_id: string; text: string; timestamp: string; source: "tts"; status: "complete" | "interrupted" }
   | { type: "llm_status"; primary: EndpointStatus; fallback: EndpointStatus; latencies_ms: number[] }
   | { type: "config"; config: OkConfig }
   | { type: "validation_error"; field: string; message: string }

@@ -28,6 +28,9 @@
     "voice": "af_nicole",
     "speed": 0.85,
     "chunk_chars": 600,
+    "live_transcription": true,
+    "retroactive_transcription": true,
+    "transcript_retention_turns": 32,
     "fallback_backend": "espeak",
     "espeak_voice": "en-us",
     "espeak_speed": 160

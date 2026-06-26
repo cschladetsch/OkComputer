@@ -330,6 +330,12 @@ OkComputer/
 
 &#x20;   "chunk\_chars": 600,
 
+&#x20;   "live\_transcription": true,
+
+&#x20;   "retroactive\_transcription": true,
+
+&#x20;   "transcript\_retention\_turns": 32,
+
 &#x20;   "fallback\_backend": "espeak",
 
 &#x20;   "espeak\_voice": "en-us",
@@ -578,6 +584,66 @@ error envelope:
 
 
 
+Include TTS transcription events in the protocol. While any assistant response
+
+is being spoken, the Bridge must emit live transcript deltas to the WebApp:
+
+```json
+
+{
+
+&#x20; "type": "transcript_delta",
+
+&#x20; "speaker": "ASSISTANT",
+
+&#x20; "utterance_id": "uuid-v4",
+
+&#x20; "sequence": 3,
+
+&#x20; "text": "spoken text for this chunk",
+
+&#x20; "final": false
+
+}
+
+```
+
+After playback completes, is interrupted, or a client reconnects, the Bridge
+
+must emit or replay a retroactive transcript entry containing the complete
+
+normalised TTS text actually submitted to synthesis:
+
+```json
+
+{
+
+&#x20; "type": "transcript_entry",
+
+&#x20; "speaker": "ASSISTANT",
+
+&#x20; "utterance_id": "uuid-v4",
+
+&#x20; "text": "complete spoken assistant response",
+
+&#x20; "timestamp": "2026-06-26T10:15:30.000Z",
+
+&#x20; "source": "tts",
+
+&#x20; "status": "complete"
+
+}
+
+```
+
+If TTS is interrupted, `status` must be `"interrupted"` and `text` must contain
+
+the full intended spoken response, while live deltas reflect only chunks that
+
+actually began playback.
+
+
+
 \*\*Unified Stop sequence specification.\*\* To prevent deadlocks or audio
 
 run-on, specify these exact sequence frames:
@@ -654,6 +720,18 @@ signatures, docstrings, and the exact exception types each method may raise.
 
 \- `ipc.client.IPCClient`
 
+Both TTS backend contracts must expose typed transcript callbacks for
+
+`on_transcript_delta(utterance_id: str, sequence: int, text: str, final: bool)`
+
+and `on_transcript_entry(utterance_id: str, text: str, status: Literal["complete",
+
+"interrupted"])`. These callbacks are the source of live and retroactive
+
+assistant transcript events; callers must receive them even when the backend
+
+falls back from Kokoro to espeak.
+
 
 
 \### A4. TypeScript/React Contracts
@@ -663,6 +741,14 @@ signatures, docstrings, and the exact exception types each method may raise.
 \- Full Zustand store shape as a TypeScript interface.
 
 \- WebSocket message types as a discriminated union.
+
+\- Include `transcript_delta` and `transcript_entry` variants in the WebSocket
+
+&#x20; discriminated union. The store must merge deltas by `utterance_id` for live
+
+&#x20; display and replace them with the final retroactive `transcript_entry` when
+
+&#x20; received.
 
 \- Props interface for every React component.
 
@@ -1128,7 +1214,15 @@ speak(text: str) -> None
 
 &#x20; 6. Unit 1 plays while units 2..N are still being synthesised.
 
-&#x20; 7. Check stop\_event between every chunk; return immediately if set.
+&#x20; 7. Emit `transcript_delta` when each playback unit begins, preserving
+
+&#x20;    `utterance_id` and monotonically increasing `sequence`.
+
+&#x20; 8. Check stop\_event between every chunk; return immediately if set.
+
+&#x20; 9. Emit one retroactive `transcript_entry` at completion or interruption
+
+&#x20;    using the complete markdown-stripped text submitted to synthesis.
 
 ```
 
@@ -1142,6 +1236,18 @@ speak(text: str) -> None
 
 \- Chunk chars: `config.tts.chunk\_chars` (int, default `600`).
 
+\- Live transcription: when `config.tts.live\_transcription` is true, publish
+
+&#x20; assistant transcript deltas for each playback unit before audio starts.
+
+\- Retroactive transcription: when `config.tts.retroactive\_transcription` is
+
+&#x20; true, persist and publish final assistant transcript entries for the last
+
+&#x20; `config.tts.transcript\_retention\_turns` TTS utterances, including entries
+
+&#x20; replayed to newly connected WebApp clients.
+
 
 
 \#### `bridge/tts/espeak\_backend.py` — Fallback TTS `\[WIN32]\[LINUX]\[MACOS]`
@@ -1151,6 +1257,10 @@ speak(text: str) -> None
 \- Win11/Linux/macOS: `espeak-ng` subprocess.
 
 \- `interrupt()`: `Popen.terminate()`.
+
+\- Emit the same live `transcript_delta` and retroactive `transcript_entry`
+
+&#x20; callbacks as Kokoro so fallback speech is never missing from transcripts.
 
 
 
@@ -1225,6 +1335,12 @@ unhandled exception.
 \- `websockets==12.0` server on `config.ipc.ws\_port`.
 
 \- Relay all IPC events to connected WebSocket clients in real time.
+
+\- Maintain an in-memory ring buffer of assistant TTS `transcript_entry`
+
+&#x20; events sized by `config.tts.transcript\_retention\_turns`; replay it to each
+
+&#x20; WebApp client immediately after connection before streaming new deltas.
 
 \- Serve `webapp/dist/` as static files on the same port under `/`.
 
@@ -1389,6 +1505,16 @@ flag.
 \- Each entry: timestamp, speaker (`USER` / `ASSISTANT`), text.
 
 \- User: right-aligned. Assistant: left-aligned.
+
+\- Live assistant TTS deltas update a single in-progress assistant row keyed by
+
+&#x20; `utterance_id` without duplicating text.
+
+\- Retroactive assistant TTS entries replace any in-progress row with the final
+
+&#x20; complete entry and are shown after reconnect even if playback occurred while
+
+&#x20; the WebApp was disconnected.
 
 \- Monospace font (JetBrains Mono).
 
@@ -1696,7 +1822,19 @@ imports an implementation module directly.
 
 \- Markdown stripped before synthesis: `\*\*bold\*\*` becomes `bold`.
 
+\- Live transcription: assert one `transcript_delta` emitted per playback unit
+
+&#x20; with stable `utterance_id` and increasing `sequence`.
+
+\- Retroactive transcription: assert one final `transcript_entry` emitted with
+
+&#x20; the full markdown-stripped text and `status = "complete"`.
+
 \- `interrupt()`: assert `stop\_event` is set; assert consumer exits.
+
+\- Interrupted transcription: assert final `transcript_entry` has
+
+&#x20; `status = "interrupted"` and contains the full intended spoken response.
 
 \- Long text split at `chunk\_chars` boundary.
 
@@ -1738,7 +1876,11 @@ imports an implementation module directly.
 
 \- `WakeWordStatus.test.tsx` — all 5 states; `aria-label` updates.
 
-\- `TranscriptFeed.test.tsx` — append entries; auto-scroll.
+\- `TranscriptFeed.test.tsx` — append entries; auto-scroll; merge live
+
+&#x20; assistant `transcript_delta` messages by `utterance_id`; replace the
+
+&#x20; in-progress row when the retroactive `transcript_entry` arrives.
 
 \- `CommandPalette.test.tsx` — filter; click sends WS message.
 
@@ -1884,7 +2026,13 @@ imports an implementation module directly.
 
 \- Assert: TTS received `"Python was created in 1991."` (no markdown).
 
-\- Assert: transcript entry appears in webapp via WebSocket.
+\- Assert: live assistant TTS transcript deltas appear in webapp via WebSocket
+
+&#x20; while audio is playing.
+
+\- Assert: final retroactive TTS transcript entry appears in webapp via
+
+&#x20; WebSocket and is replayed after a reconnect.
 
 
 
@@ -2015,6 +2163,10 @@ All of the following must pass before halting:
 \- \[ ] `"volume up"` increases system volume
 
 \- \[ ] `"what is the capital of france"` returns a spoken TTS response
+
+\- \[ ] Spoken TTS responses produce live transcript deltas and retroactive
+
+&#x20; transcript entries visible in the WebApp, including after reconnect
 
 \- \[ ] No model file exists outside `DEEPSEEK\_MODEL\_HOME`
 

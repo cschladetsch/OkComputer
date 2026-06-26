@@ -7,6 +7,7 @@ import sys
 import subprocess
 import webbrowser
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TextIO, cast
 
@@ -135,9 +136,43 @@ async def initialize_bridge() -> None:
     config = load_config()
     ipc = IPCClient()
     await ipc.connect()
-    relay = WSRelay(int(config["ipc"]["ws_port"]))
+    tts_config = config_section(config, "tts")
+    relay = WSRelay(int(config["ipc"]["ws_port"]), int(tts_config.get("transcript_retention_turns", 32)))
     await relay.start()
-    _tts = KokoroBackend(int(config["tts"]["chunk_chars"]), float(config["tts"]["speed"]))
+
+    async def broadcast_transcript_delta(utterance_id: str, sequence: int, text: str, final: bool) -> None:
+        await relay.broadcast(
+            {
+                "type": "transcript_delta",
+                "speaker": "ASSISTANT",
+                "utterance_id": utterance_id,
+                "sequence": sequence,
+                "text": text,
+                "final": final,
+            }
+        )
+
+    async def broadcast_transcript_entry(utterance_id: str, text: str, status: str) -> None:
+        await relay.broadcast(
+            {
+                "type": "transcript_entry",
+                "speaker": "ASSISTANT",
+                "utterance_id": utterance_id,
+                "text": text,
+                "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+                "source": "tts",
+                "status": status,
+            }
+        )
+
+    _tts = KokoroBackend(
+        int(tts_config["chunk_chars"]),
+        float(tts_config["speed"]),
+        on_transcript_delta=broadcast_transcript_delta,
+        on_transcript_entry=broadcast_transcript_entry,
+        live_transcription=bool(tts_config.get("live_transcription", True)),
+        retroactive_transcription=bool(tts_config.get("retroactive_transcription", True)),
+    )
     _system = SystemHandler()
     controller = BridgeController(Path("okcomputer.config.json"), relay, _system)
     ipc.subscribe(controller.process_frame)

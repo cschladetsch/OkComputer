@@ -7,6 +7,7 @@ import { StopButton } from "../src/components/StopButton";
 import { TranscriptFeed } from "../src/components/TranscriptFeed";
 import { WakeWordStatus } from "../src/components/WakeWordStatus";
 import { commands } from "../src/store/commands";
+import { useOkComputerStore } from "../src/store/useOkComputerStore";
 
 describe("components", () => {
   it("renders all wake states with aria labels", () => {
@@ -20,6 +21,34 @@ describe("components", () => {
   it("renders transcript entries", () => {
     render(<TranscriptFeed entries={[{ timestamp: "now", speaker: "USER", text: "hello" }]} />);
     expect(screen.getByText("hello")).toBeInTheDocument();
+  });
+
+  it("merges TTS transcript deltas and replaces them with final entries", () => {
+    useOkComputerStore.setState({ transcripts: [] });
+    const store = useOkComputerStore.getState();
+    store.handleMessage({ type: "transcript_delta", speaker: "ASSISTANT", utterance_id: "u1", sequence: 0, text: "hello", final: false });
+    store.handleMessage({ type: "transcript_delta", speaker: "ASSISTANT", utterance_id: "u1", sequence: 1, text: "world", final: false });
+    expect(useOkComputerStore.getState().transcripts).toMatchObject([{ utterance_id: "u1", text: "hello world", status: "partial" }]);
+
+    store.handleMessage({
+      type: "transcript_entry",
+      speaker: "ASSISTANT",
+      utterance_id: "u1",
+      text: "hello world.",
+      timestamp: "2026-06-26T00:00:00Z",
+      source: "tts",
+      status: "complete"
+    });
+    expect(useOkComputerStore.getState().transcripts).toEqual([
+      {
+        utterance_id: "u1",
+        timestamp: "2026-06-26T00:00:00Z",
+        speaker: "ASSISTANT",
+        text: "hello world.",
+        source: "tts",
+        status: "complete"
+      }
+    ]);
   });
 
   it("filters and sends commands", () => {

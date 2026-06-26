@@ -42,9 +42,25 @@ def test_vosk_wake_event(tmp_path: Path) -> None:
 
 def test_kokoro_chunks_and_interrupt() -> None:
     async def run() -> None:
+        deltas: list[tuple[str, int, str, bool]] = []
+        entries: list[tuple[str, str, str]] = []
+
+        async def on_delta(utterance_id: str, sequence: int, text: str, final: bool) -> None:
+            deltas.append((utterance_id, sequence, text, final))
+
+        async def on_entry(utterance_id: str, text: str, status: str) -> None:
+            entries.append((utterance_id, text, status))
+
         backend = KokoroBackend(chunk_chars=5)
         await backend.speak("**hello** world.")
         assert backend.spoken_chunks == ["hello", "world", "."]
+
+        instrumented = KokoroBackend(chunk_chars=5, on_transcript_delta=on_delta, on_transcript_entry=on_entry)
+        await instrumented.speak("**hello** world.")
+        assert [item[1:] for item in deltas] == [(0, "hello", False), (1, "world", False), (2, ".", False)]
+        assert len({item[0] for item in deltas}) == 1
+        assert entries == [(deltas[0][0], "hello world.", "complete")]
+
         backend.interrupt()
         assert backend.stop_event.is_set()
 
@@ -94,9 +110,56 @@ def test_ws_relay_broadcast_and_ipc_subscription() -> None:
         async def capture(frame: dict[str, object]) -> None:
             received.append(frame)
 
-        relay.attach_client(capture)
+        await relay.attach_client(capture)
         await relay.broadcast({"type": "transcript", "speaker": "USER", "text": "hello"})
         assert received[-1]["type"] == "transcript"
+
+    asyncio.run(run())
+
+
+def test_ws_relay_replays_tts_transcript_entries() -> None:
+    async def run() -> None:
+        relay = WSRelay(5003, transcript_retention_turns=1)
+        await relay.start()
+        await relay.broadcast(
+            {
+                "type": "transcript_entry",
+                "speaker": "ASSISTANT",
+                "utterance_id": "old",
+                "text": "old response",
+                "timestamp": "2026-06-26T00:00:00Z",
+                "source": "tts",
+                "status": "complete",
+            }
+        )
+        await relay.broadcast(
+            {
+                "type": "transcript_entry",
+                "speaker": "ASSISTANT",
+                "utterance_id": "new",
+                "text": "new response",
+                "timestamp": "2026-06-26T00:00:01Z",
+                "source": "tts",
+                "status": "complete",
+            }
+        )
+        received: list[dict[str, object]] = []
+
+        async def capture(frame: dict[str, object]) -> None:
+            received.append(frame)
+
+        await relay.attach_client(capture)
+        assert received == [
+            {
+                "type": "transcript_entry",
+                "speaker": "ASSISTANT",
+                "utterance_id": "new",
+                "text": "new response",
+                "timestamp": "2026-06-26T00:00:01Z",
+                "source": "tts",
+                "status": "complete",
+            }
+        ]
 
     asyncio.run(run())
 
@@ -120,8 +183,9 @@ def test_bridge_main_broadcasts_initial_state(monkeypatch: pytest.MonkeyPatch) -
             self.handlers.append(handler)
 
     class FakeRelay:
-        def __init__(self, port: int) -> None:
+        def __init__(self, port: int, transcript_retention_turns: int = 32) -> None:
             self.port = port
+            self.transcript_retention_turns = transcript_retention_turns
             self.session_token = "session-token"
             self.events: list[dict[str, object]] = []
 
@@ -131,13 +195,26 @@ def test_bridge_main_broadcasts_initial_state(monkeypatch: pytest.MonkeyPatch) -
         async def broadcast(self, frame: dict[str, object]) -> None:
             self.events.append(frame)
 
-        def attach_client(self, handler: object) -> None:
+        async def attach_client(self, handler: object) -> None:
             return None
 
-    monkeypatch.setattr(bridge_runtime, "load_config", lambda: {"ipc": {"ws_port": 5003}, "tts": {"chunk_chars": 600, "speed": 0.85}})
+    monkeypatch.setattr(
+        bridge_runtime,
+        "load_config",
+        lambda: {
+            "ipc": {"ws_port": 5003},
+            "tts": {
+                "chunk_chars": 600,
+                "speed": 0.85,
+                "live_transcription": True,
+                "retroactive_transcription": True,
+                "transcript_retention_turns": 32,
+            },
+        },
+    )
     monkeypatch.setattr(bridge_runtime, "IPCClient", FakeIPCClient)
     monkeypatch.setattr(bridge_runtime, "WSRelay", FakeRelay)
-    monkeypatch.setattr(bridge_runtime, "KokoroBackend", lambda chunk_chars, speed: object())
+    monkeypatch.setattr(bridge_runtime, "KokoroBackend", lambda *args, **kwargs: object())
     monkeypatch.setattr(bridge_runtime, "SystemHandler", lambda: object())
 
     async def run() -> None:
