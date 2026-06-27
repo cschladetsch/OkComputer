@@ -1,0 +1,3 @@
+[submodule "third_party/CppLmmModelStore"]
+	path = third_party/CppLmmModelStore
+	url = https://github.com/cschladetsch/CppLmmModelStore

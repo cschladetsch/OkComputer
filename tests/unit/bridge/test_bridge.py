@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from bridge.controller import BridgeController
+from bridge.audio_monitor import MicrophoneMonitor
 from bridge.errors import LLMError, STTInitError, STTProcessingError, SystemHandlerError
 from bridge.ipc.client import IPCClient
 from bridge.llm.router import LLMRouter
@@ -38,6 +39,23 @@ def test_vosk_wake_event(tmp_path: Path) -> None:
     assert backend.accept_pcm(b"\x00\x00") is None
     with pytest.raises(STTProcessingError):
         backend.accept_pcm(b"\x01")
+
+
+def test_microphone_monitor_reacts_to_pcm_without_model(tmp_path: Path) -> None:
+    async def run() -> None:
+        events: list[dict[str, object]] = []
+
+        async def broadcast(frame: dict[str, object]) -> None:
+            events.append(frame)
+
+        monitor = MicrophoneMonitor(broadcast, tmp_path / "missing-model", "ok computer", 16000, 1, cooldown_seconds=0)
+        monitor._energy_fallback = True
+        await monitor.process_pcm(b"\x01\x00")
+        assert events[0] == {"type": "state", "state": "LISTENING"}
+        assert events[1]["type"] == "transcript"
+        assert events[1]["text"] == "microphone activity detected"
+
+    asyncio.run(run())
 
 
 def test_kokoro_chunks_and_interrupt() -> None:

@@ -222,15 +222,9 @@ OkComputer/
 
 &#x20;   ├── setup.ps1                 # Win11: prerequisites + submodule + pip + pnpm
 
-&#x20;   ├── setup.sh                  # Linux/macOS equivalent
-
 &#x20;   ├── build.ps1
 
-&#x20;   ├── build.sh
-
-&#x20;   ├── run.ps1
-
-&#x20;   └── run.sh
+&#x20;   └── run.ps1
 
 ```
 
@@ -846,7 +840,7 @@ starting the next.
 
 
 
-`scripts/setup.ps1` and `scripts/setup.sh` must:
+`scripts/setup.ps1` must:
 
 
 
@@ -856,7 +850,7 @@ starting the next.
 
 2\. Clone CppLmmModelStore as a git submodule:
 
-&#x20;  ```bash
+&#x20;  ```powershell
 
 &#x20;  git submodule add https://github.com/cschladetsch/CppLmmModelStore \\
 
@@ -872,17 +866,9 @@ starting the next.
 
 &#x20;    PowerShell profile.
 
-&#x20;  - Linux/macOS: append `export DEEPSEEK\_MODEL\_HOME=...` to `\~/.bashrc`
-
-&#x20;    and `\~/.zshrc`.
-
-&#x20;  - Defaults per platform:
+&#x20;  - Default:
 
 &#x20;    - Win11: `%LOCALAPPDATA%\\OkComputer\\models`
-
-&#x20;    - Linux: `\~/.local/share/okcomputer/models`
-
-&#x20;    - macOS: `\~/Library/Application Support/okcomputer/models`
 
 4\. Run `python3 third\_party/CppLmmModelStore/scripts/ensure\_models.py` for
 
@@ -1674,7 +1660,7 @@ WantedBy=default.target
 
 
 
-Standard `KeepAlive` launchd plist targeting `scripts/run.sh`.
+Standard `KeepAlive` launchd plist targeting `pwsh -File scripts/run.ps1`.
 
 
 
@@ -2096,10 +2082,6 @@ Write-Host "Build complete."
 
 
 
-`scripts/build.sh` — identical logic via bash `set -euo pipefail`.
-
-
-
 \---
 
 
@@ -2125,10 +2107,6 @@ Write-Host "Build complete."
 5\. Print: `"OkComputer running. Say 'Ok Computer' to begin."`.
 
 6\. `Wait-Job` — block until all jobs exit; on any exit, kill siblings.
-
-
-
-`scripts/run.sh` — identical logic via bash.
 
 
 
@@ -2194,29 +2172,7 @@ git clone https://github.com/cschladetsch/OkComputer
 
 cd OkComputer
 
-.\\scripts\\setup.ps1
-
-.\\scripts\\build.ps1
-
-.\\scripts\\run.ps1
-
-```
-
-
-
-\*\*Linux / macOS:\*\*
-
-
-
-```bash
-
-git clone https://github.com/cschladetsch/OkComputer
-
-cd OkComputer
-
-chmod +x scripts/\*.sh
-
-./scripts/setup.sh \&\& ./scripts/build.sh \&\& ./scripts/run.sh
+.\\s.ps1
 
 ```
 

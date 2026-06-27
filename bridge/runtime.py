@@ -7,12 +7,15 @@ import sys
 import subprocess
 import webbrowser
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TextIO, cast
 
 from bridge.config import load_config
+from bridge.config import model_home
 from bridge.controller import BridgeController
+from bridge.audio_monitor import MicrophoneMonitor
 from bridge.ipc.client import IPCClient
 from bridge.system.handler import SystemHandler
 from bridge.tts.kokoro_backend import KokoroBackend
@@ -23,6 +26,12 @@ CONFIG_PATH = ROOT / "okcomputer.config.json"
 BRIDGE_LOG = ROOT / "logs" / "bridge.log"
 CORE_LOG = ROOT / "logs" / "core.log"
 WEBAPP_LOG = ROOT / "logs" / "webapp.log"
+
+
+@dataclass
+class InitializedBridge:
+    relay: WSRelay
+    microphone: MicrophoneMonitor | None
 
 
 def load_runtime_config() -> dict[str, object]:
@@ -132,7 +141,7 @@ async def run() -> None:
         raise SystemExit(0)
 
 
-async def initialize_bridge() -> None:
+async def initialize_bridge(start_microphone: bool = False) -> InitializedBridge:
     config = load_config()
     ipc = IPCClient()
     await ipc.connect()
@@ -177,5 +186,22 @@ async def initialize_bridge() -> None:
     controller = BridgeController(Path("okcomputer.config.json"), relay, _system)
     ipc.subscribe(controller.process_frame)
     await relay.broadcast({"type": "state", "state": "IDLE"})
+    microphone: MicrophoneMonitor | None = None
+    if start_microphone:
+        stt_config = config_section(config, "stt")
+        audio_config = config_section(config, "audio")
+        microphone = MicrophoneMonitor(
+            relay.broadcast,
+            model_home(config) / str(stt_config["vosk_model_name"]),
+            str(config["wake_word"]),
+            int(audio_config["sample_rate"]),
+            int(audio_config["channels"]),
+        )
+        try:
+            await microphone.start()
+        except Exception as exc:
+            await relay.broadcast({"type": "error", "code": "AUDIO_INIT_FAILED", "message": str(exc)})
+            microphone = None
     print(f"Bridge ready. Session token: {relay.session_token}")
     await asyncio.sleep(0)
+    return InitializedBridge(relay=relay, microphone=microphone)

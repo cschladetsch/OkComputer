@@ -6,7 +6,9 @@
   <string>com.okcomputer</string>
   <key>ProgramArguments</key>
   <array>
-    <string>scripts/run.sh</string>
+    <string>pwsh</string>
+    <string>-File</string>
+    <string>scripts/run.ps1</string>
   </array>
   <key>KeepAlive</key>
   <true/>

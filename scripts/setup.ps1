@@ -58,34 +58,102 @@ function Invoke-Pnpm {
     } else {
         & corepack pnpm @args
     }
+    if ($LASTEXITCODE -ne 0) {
+        throw "pnpm failed with exit code $LASTEXITCODE"
+    }
+}
+
+function Invoke-Native($Description, [scriptblock]$Command) {
+    & $Command
+    if ($LASTEXITCODE -ne 0) {
+        throw "$Description failed with exit code $LASTEXITCODE"
+    }
+}
+
+function Initialize-GitModules {
+    if (-not (Test-Path ".gitmodules")) {
+        return
+    }
+
+    $pathLines = & git config --file .gitmodules --get-regexp '^submodule\..*\.path$'
+    if ($LASTEXITCODE -ne 0 -or $null -eq $pathLines) {
+        return
+    }
+
+    foreach ($line in @($pathLines)) {
+        $parts = $line -split '\s+', 2
+        if ($parts.Count -ne 2) {
+            continue
+        }
+        $pathKey = $parts[0]
+        $path = $parts[1]
+        $urlKey = $pathKey -replace '\.path$', '.url'
+        $url = & git config --file .gitmodules --get $urlKey
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($url)) {
+            throw "Missing URL for git module path $path"
+        }
+        if (-not (Test-Path $path)) {
+            Invoke-Native "git clone $path" { git clone $url $path }
+        }
+    }
 }
 
 Require-Command cmake "winget install Kitware.CMake"
+Require-Command git "winget install Git.Git"
 Require-Command node "winget install OpenJS.NodeJS.LTS"
 Require-Command corepack "winget install OpenJS.NodeJS.LTS"
 $Python = Resolve-Python
 Require-MinVersion cmake "3.28" "winget install Kitware.CMake" { cmake --version }
 Require-MinVersion python "3.11" "winget install Python.Python.3.11" { & $Python --version }
 Require-MinVersion node "20.0" "winget install OpenJS.NodeJS.LTS" { node --version }
-corepack prepare pnpm@9.0.0 --activate
+Invoke-Native "corepack prepare pnpm" { corepack prepare pnpm@9.0.0 --activate }
 Require-MinVersion pnpm "9.0" "corepack enable; corepack prepare pnpm@9.0.0 --activate" { Invoke-Pnpm --version }
+
+$VenvPython = ".venv\Scripts\python.exe"
+if (-not (Test-Path $VenvPython)) {
+    Invoke-Native "python venv creation" { & $Python -m venv .venv }
+}
+$Python = $VenvPython
+
+$GitExe = (Get-Command git -ErrorAction Stop).Source
+$GitRoot = Split-Path -Parent (Split-Path -Parent $GitExe)
+$GitUsrBin = Join-Path $GitRoot "usr\bin"
+if (Test-Path $GitUsrBin) {
+    $env:PATH = "$GitUsrBin;$env:PATH"
+}
 
 $modelHome = if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA "OkComputer\models" } else { Join-Path $HOME "AppData\Local\OkComputer\models" }
 [Environment]::SetEnvironmentVariable("DEEPSEEK_MODEL_HOME", $modelHome, "User")
 $env:DEEPSEEK_MODEL_HOME = $modelHome
 New-Item -ItemType Directory -Force -Path $modelHome | Out-Null
 
-if (-not (Test-Path "third_party/CppLmmModelStore/.git")) {
-    git submodule add https://github.com/cschladetsch/CppLmmModelStore third_party/CppLmmModelStore
+if (-not (Test-Path ".gitmodules") -and -not (Test-Path "third_party/CppLmmModelStore")) {
+    Invoke-Native "CppLmmModelStore clone" { git clone https://github.com/cschladetsch/CppLmmModelStore third_party/CppLmmModelStore }
 }
-git submodule update --init --recursive
+Initialize-GitModules
 
 $ensure = "third_party/CppLmmModelStore/scripts/ensure_models.py"
 if (Test-Path $ensure) {
-    & $Python $ensure --config okcomputer.config.json
+    $modelNames = & $Python -c @"
+import json
+with open('okcomputer.config.json', encoding='utf-8') as handle:
+    config = json.load(handle)
+for model in config['model_store']['models']:
+    print(model['name'])
+"@
+    $modelArgs = @("--model") + ($modelNames -split "`r?`n" | Where-Object { $_ })
+    Invoke-Native "CppLmmModelStore model ensure" { & $Python $ensure @modelArgs }
 }
 
-& $Python -m pip install -r bridge/requirements.txt
+$filteredRequirements = New-TemporaryFile
+try {
+    Get-Content bridge/requirements.txt |
+        Where-Object { $_ -notmatch '^dbus-python==' } |
+        Set-Content -Path $filteredRequirements -Encoding ASCII
+    Invoke-Native "Python dependency install" { & $Python -m pip install --retries 10 --timeout 120 -r $filteredRequirements }
+} finally {
+    Remove-Item -LiteralPath $filteredRequirements -Force -ErrorAction SilentlyContinue
+}
 Push-Location webapp
 Invoke-Pnpm install --frozen-lockfile
 Pop-Location
